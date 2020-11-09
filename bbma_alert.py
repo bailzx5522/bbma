@@ -1,6 +1,9 @@
 import pythonicMT4 
 import talib
 import numpy as np
+import gevent
+import requests
+from datetime import datetime
 from time import sleep
 
 trade= pythonicMT4.zmq_python()
@@ -45,64 +48,101 @@ def sma():
         
         sleep(3)
 
-def bbma():
-    symbol= 'EURUSD'
-    symbols = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "XAUUSD"]
-    timeframe= 'H1'
-    timeframes= ["M5", "M15", "M30", "H1"]
-    start= 0
-    end= 200
-    ma_period = 5
-    stopLoss= 500
-    takeProfit= 1000
-    order= ''
 
-    while True:
-        try:
+def bbma():
+    timeframes = [5, 15, 30, 60]
+    symbols = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "XAUUSD"]
+    start= 0
+    end= 60
+    ma_period = 5
+
 #vector[-1] is current(not closed) candle
 #vector[-2] is previous candle
-            prices_close = trade.get_data(symbol= symbol, timeframe= 'M15', start_bar=start, end_bar=end)
-            prices_high = trade.get_data(symbol= symbol, timeframe= 'M15', start_bar=start, end_bar=end, price_type="DATA1|")
-            prices_low = trade.get_data(symbol= symbol, timeframe= 'M15', start_bar=start, end_bar=end, price_type="DATA2|")
-            sma_low = talib.EMA(prices_low, timeperiod=ma_period)
-            sma_high = talib.EMA(prices_high, timeperiod=ma_period)
-            bbupper, bbmiddle, bblower = talib.BBANDS(prices_close, 20)
-
-            print ("Prev price: {} \nupper: {}\nbblower: {}\nsma_low: {}\n".format(
-                prices_close[-2], bbupper[-2], bblower[-2], sma_low[-2], sma_low[-2]))
-
-            for i,val in np.ndenumerate(prices_close):
-                print(val, i)
-                if sma_high[i] > bbupper[i]:
-                    print("over bought")
-                elif sma_low[i] < bblower[i]:
-                    print("over sold")
-
-            #if order != 'Buy' and order != 'Sell':
-            #    if (prices[-1] > prices [-2]) and (prices[-1]<SMA[-1]):
-            #        order= 'Buy'
-
-            #    else:
-            #        if (prices[-1] < prices[-2]) and (prices[-1] > SMA[-1]):
-            #            order= 'Sell'
-
-            #if order== 'Buy' and prices[-1]>SMA[-1]:
-            #    order= ''
-
-            #else:
-            #    if order== 'Sell' and prices[-1]<SMA[-1]:
-            #        order= ''
-        except Exception as e:
-            print("Error occur", e)
-            sleep(3)
+    while True:
+        minute = datetime.now().minute
+        second = datetime.now().second
+        if minute % 5 == 0 and second == 0:
+            inv = 5
+        elif minute % 15 == 0 and second == 0:
+            inv = 15
+        elif minute % 30 == 0 and second == 0:
+            inv = 30
+        elif minute % 60 == 0 and second == 0:
+            inv = 60
+        else:
+            gevent.sleep(1)
             continue
-        
-        sleep(60)
+        for s in symbols:
+            
+            prices_close = trade.get_data(symbol= s, timeframe= str(inv), start_bar=start, end_bar=end)
+            prices_high = trade.get_data(symbol= s, timeframe= str(inv), start_bar=start, end_bar=end, price_type="DATA1|")
+            prices_low = trade.get_data(symbol= s, timeframe= str(inv), start_bar=start, end_bar=end, price_type="DATA2|")
+            try:
+                ma_low = talib.WMA(prices_low, timeperiod=ma_period)
+                ma_high = talib.WMA(prices_high, timeperiod=ma_period)
+                ema_50 = talib.EMA(prices_close, timeperiod=50)
+                bbupper, bbmiddle, bblower = talib.BBANDS(prices_close, 20)
+
+                print("Syncing", s, inv, "@", datetime.now())
+                #print (s, " Prev price: {} \nupper: {}\nbblower: {}\nsma_low: {}\n".format(
+                #    prices_close[-2], bbupper[-2], bblower[-2], ma_low[-2], ma_low[-2]))
+
+                #for i,val in np.ndenumerate(prices_close):
+                #    if ma_high[i] > bbupper[i]:
+                #        print(s,inv, end-i[0],",price:", val ,",hma:", ma_high[i], ",bbupper:", bbupper[i], ",over bought.")
+                #    elif ma_low[i] < bblower[i]:
+                #        print(s,inv, end-i[0],",price:", val, ",lma:", ma_low[i], ",bblow:", bblower[i], ",over sell.")
+            except Exception as e:
+                print("Error occur", e)
+                sleep(3)
+                continue
+    
+        gevent.sleep(1)
+
+# 5hima>bb
+# alert
+# make s
+# if not making_s and price >= 5highma:
+
+# 5lwma<bb
+# alert
+# make b
+# if making_b and price <= 5lowma:
+
+
+def feed():
+    return
+
+    while True:
+        symbols = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "XAUUSD"]
+        for s in symbols:
+            rates = trade.get_tick(s)
+            print(rates)
+        gevent.sleep(1)
+
+# telegram
+# api:    https://core.telegram.org/bots/api#sendmessage
+def send_alert(message):
+    print("Send message:{}".format(message))
+    return
+    #token:1487299749:AAHb-0rkOo18J4TQ6cuWR1OTGKikX5sGWn4
+    bot_token = '1487299749:AAHwGvOysVg4bA3ltzccV68U7EmFJdLp7Mo'
+    bot_chatID = '1181612803'
+    send_text = 'https://api.telegram.org/bot' + bot_token + '/sendMessage?chat_id=' + bot_chatID + '&parse_mode=Markdown&text=' + message
+
+    response = requests.get(send_text)
+    json_resp = response.json()
+    if json_resp['ok']:
+        return
+    else:
+        print(response.json())
 
 
 def main():
-    #sma()
-    bbma()
+    gevent.joinall([gevent.spawn(feed),
+        gevent.spawn(bbma),
+        ])
+    
 
 if __name__ == "__main__":
     main()
