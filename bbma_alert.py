@@ -3,131 +3,158 @@ import talib
 import numpy as np
 import gevent
 import requests
+import sys
 from datetime import datetime
 from time import sleep
 
 trade= pythonicMT4.zmq_python()
+def send_screenshot():
+    pass
 
-def sma():
-    symbol= 'EURUSD'
-    timeframe= 'H1'
-    start= 0
-    end= 200
-    period= 96
-    stopLoss= 500
-    takeProfit= 1000
-    order= ''
+class BBMA():
+    def __init__(self, tf):
+        self.tf = tf
+        self.ext = None  #{"action":"buy","ep": "", "ma_ep":bool, }
+        self.mhv = None
+        #self.reentry = None
+    
+    """
+    EXTREME:
+        uptrend:
+            hma5 > bbup
+            candle closes in bbup
+            reverse candle
+            entrypoint: hma5 or zone of high of candle close
+            tp: lma5 for safety
+        downtrend:
+            lma5 < bblow
+            ...
+        void:
+            until candle close out of bbup
+        input: array of prices(open high low close)
+    """
+    def extreme(self, prices_arr):
+        WMA_PERIOD = 5
+        prices = prices_arr[3]
+        prev_close = prices[-2]
+        bbup, bbmid, bblow = talib.BBANDS(prices, 20)
+        lma5 = talib.WMA(prices_arr[2], timeperiod=WMA_PERIOD)
+        hma5 = talib.WMA(prices_arr[1], timeperiod=WMA_PERIOD)
+        # check prev candle is EXTREME
+        if self.ext is None:
+            if hma5[-2] > bbup[-2]:
+                self.ext = {"action":"sell", "ep":"{}-{}".format(prices_arr[1][-2]), "ma_ep": True}
+            elif lma5[-2] > bblow[-2]:
+                self.ext = {"action":"buy", "ep":"{}-{}".format(), "ma_ep": True}
+        else:
+            #check out previous extreme is invalid.New candle close out of bb(faild)
+            if (prev_close > self.ext and prev_close > bbup[-2]) or (prev_close < self.ext and  prev_close < bblow[-2]):
+                self.ext = None
+                #self.ext_dt = 
 
-    while True:
-        try:
-            prices= trade.get_data(symbol= symbol, timeframe= 'H1', start_bar=start, end_bar=end)
-            SMA= talib.SMA(prices, timeperiod=period)
-            print ("Current price: {} \nSMA: {}".format(prices[-1], SMA[-1]))
+        return
 
-            if order != 'Buy' and order != 'Sell':
-                if (prices[-1] > prices [-2]) and (prices[-1]<SMA[-1]):
-                    order= 'Buy'
-            #        #trade.buy_order(symbol= symbol, stop_loss= stopLoss, take_profit= takeProfit)
+    def mhv_perform(self):
+        pass
 
-                else:
-                    if (prices[-1] < prices[-2]) and (prices[-1] > SMA[-1]):
-                        order= 'Sell'
-            #            #trade.sell_order(symbol= symbol, stop_loss= stopLoss, take_profit= takeProfit)
+    # reentry after CSM
+    # reentry after CSA
+    # reentry after CSAK
+    # reentry after bigger reentry
+    # bb filter(check bbmid for reentry)
+    def reentry(self):
+        if self.ext and self.mhv:
+            #self.pd[]
+            #downtrend:retrace to hma5-hma10
 
-            if order== 'Buy' and prices[-1]>SMA[-1]:
-                order= ''
-            #    #trade.close_buy_order()
+            #uptrend:  retrace to lma5-lma10
+            return
+        else:
+            return False
+            
 
-            else:
-                if order== 'Sell' and prices[-1]<SMA[-1]:
-                    order= ''
-            #        #trade.close_sell_order()
-        except Exception as e:
-            print("Error occur", e)
-            continue
-        
-        sleep(3)
+    def csa(self):
+        pass
 
+    def pattern(self):
+        pass
 
-def bbma():
-    timeframes = [5, 15, 30, 60]
-    symbols = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "XAUUSD"]
+    def format_data(self, prices_arr):
+        o = prices_arr[0]
+        h = prices_arr[1]
+        l = prices_arr[2]
+        c = prices_arr[3]
+        d = prices_arr[4]
+        return np.array([o, h, l, c, d])
+
+def bbma(symbol, tf):
     start= 0
     end= 60
     ma_period = 5
+    last_fetch_time = 0
+    #
+    upper_ext = 0
+    last_upper_ext_time = 0
+    lower_ext = 0
+    last_lower_ext_time = 0
 
-#vector[-1] is current(not closed) candle
-#vector[-2] is previous candle
     while True:
         minute = datetime.now().minute
-        second = datetime.now().second
-        if minute % 5 == 0 and second == 0:
-            inv = 5
-        elif minute % 15 == 0 and second == 0:
-            inv = 15
-        elif minute % 30 == 0 and second == 0:
-            inv = 30
-        elif minute % 60 == 0 and second == 0:
-            inv = 60
-        else:
+        fetch_time = datetime.now().timestamp()
+        if not(minute % tf == 0 and fetch_time - last_fetch_time > 60):
             gevent.sleep(1)
             continue
-        for s in symbols:
-            
-            prices_close = trade.get_data(symbol= s, timeframe= str(inv), start_bar=start, end_bar=end)
-            prices_high = trade.get_data(symbol= s, timeframe= str(inv), start_bar=start, end_bar=end, price_type="DATA1|")
-            prices_low = trade.get_data(symbol= s, timeframe= str(inv), start_bar=start, end_bar=end, price_type="DATA2|")
-            try:
-                ma_low = talib.WMA(prices_low, timeperiod=ma_period)
-                ma_high = talib.WMA(prices_high, timeperiod=ma_period)
-                ema_50 = talib.EMA(prices_close, timeperiod=50)
-                bbupper, bbmiddle, bblower = talib.BBANDS(prices_close, 20)
+        last_fetch_time = fetch_time
+        prices_close = trade.get_data(symbol= symbol, timeframe= str(tf), start_bar=start, end_bar=end)
+        prices_high = trade.get_data(symbol= symbol, timeframe= str(tf), start_bar=start, end_bar=end, price_type="DATA1|")
+        prices_low = trade.get_data(symbol= symbol, timeframe= str(tf), start_bar=start, end_bar=end, price_type="DATA2|")
+        try:
+            ma_low = talib.WMA(prices_low, timeperiod=ma_period)
+            ma_high = talib.WMA(prices_high, timeperiod=ma_period)
+            ema_50 = talib.EMA(prices_close, timeperiod=50)
+            bbupper, bbmiddle, bblower = talib.BBANDS(prices_close, 20)
 
-                print("Syncing", s, inv, "@", datetime.now())
-                #print (s, " Prev price: {} \nupper: {}\nbblower: {}\nsma_low: {}\n".format(
-                #    prices_close[-2], bbupper[-2], bblower[-2], ma_low[-2], ma_low[-2]))
+            print("Syncing", symbol, tf, "@", datetime.now())
+            #print (s, " Prev price: {} \nupper: {}\nbblower: {}\nsma_low: {}\n".format(
+            #    prices_close[-2], bbupper[-2], bblower[-2], ma_low[-2], ma_low[-2]))
 
-                #for i,val in np.ndenumerate(prices_close):
-                #    if ma_high[i] > bbupper[i]:
-                #        print(s,inv, end-i[0],",price:", val ,",hma:", ma_high[i], ",bbupper:", bbupper[i], ",over bought.")
-                #    elif ma_low[i] < bblower[i]:
-                #        print(s,inv, end-i[0],",price:", val, ",lma:", ma_low[i], ",bblow:", bblower[i], ",over sell.")
-            except Exception as e:
-                print("Error occur", e)
-                sleep(3)
-                continue
+            # hma > bbupper or lma < bblower
+            # close < bblower
+            for i,val in np.ndenumerate(prices_close):
+                if i == end-1 and ma_high[i] > bbupper[i] and prices_close[-1] < bbupper[i]:
+                    upper_ext = prices_high[i]
+                    last_upper_ext_time = last_fetch_time
+                    msg = "EXTREME\nsymbol:{},tf:{},price:{},hma:{},bbupper:{}".format(symbol, tf, val, ma_high[i], bbupper[i])
+                    print(symbol,tf, end-i[0],",price:", val ,",hma:", ma_high[i], ",bbupper:", bbupper[i], ",over bought.")
+                    send_alert(msg)
+                elif i == end-1 and ma_low[i] < bblower[i] and prices_close[-1] < bblower[i]:
+                    lower_ext = prices_low[i]
+                    last_lower_ext_time = last_fetch_time
+                    msg = "EXTREME\nsymbol:{},tf:{},price:{},lma:{},bblower:{}".format(symbol, tf, val, ma_low[i], bblower[i])
+                    print(symbol,tf, end-i[0],",price:", val, ",lma:", ma_low[i], ",bblow:", bblower[i], ",over sell.")
+                    send_alert(msg)
+        except Exception as e:
+            print("Error occur", e)
+            sleep(3)
+            continue
     
         gevent.sleep(1)
 
-# 5hima>bb
-# alert
-# make s
-# if not making_s and price >= 5highma:
-
-# 5lwma<bb
-# alert
-# make b
-# if making_b and price <= 5lowma:
-
-
 def feed():
-    return
-
     while True:
         symbols = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "XAUUSD"]
         for s in symbols:
             rates = trade.get_tick(s)
-            print(rates)
+            #print(rates)
         gevent.sleep(1)
 
 # telegram
 # api:    https://core.telegram.org/bots/api#sendmessage
+#         https://api.telegram.org/bot<token>/METHOD_NAME
 def send_alert(message):
-    print("Send message:{}".format(message))
-    return
-    #token:1487299749:AAHb-0rkOo18J4TQ6cuWR1OTGKikX5sGWn4
     bot_token = '1487299749:AAHwGvOysVg4bA3ltzccV68U7EmFJdLp7Mo'
     bot_chatID = '1181612803'
+    bot_chatID = '-1001229738466'
     send_text = 'https://api.telegram.org/bot' + bot_token + '/sendMessage?chat_id=' + bot_chatID + '&parse_mode=Markdown&text=' + message
 
     response = requests.get(send_text)
@@ -137,12 +164,91 @@ def send_alert(message):
     else:
         print(response.json())
 
+def bbma_get_data():
+    jobs = [gevent.spawn(feed)]
+    symbols = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "XAUUSD"]
+    tfs = [5, 15, 30, 60]
+    for s in symbols:
+        for tf in tfs:
+            jobs.append(gevent.spawn(bbma, s, tf))
+    gevent.joinall(jobs)
 
-def main():
-    gevent.joinall([gevent.spawn(feed),
-        gevent.spawn(bbma),
-        ])
+"""
+params:
+    sell while price > hma5 @tf
+    buy  while price < lma5 @tf
+"""
+def take_order(action, symbol, lots, tf):
+    sl = 100
+    tp = 100
+    open = False
+    first = True
+    timeout = tf * 5
+    begin = datetime.now().timestamp()
+    end = begin + timeout*60
+    msg0 = "Ready:{} {} lot:{} TF:M{}\nTimeout:{}".format(action, symbol, lots, tf, end)
+    print(msg0)
+    #send_alert(msg0)
+    while True:
+        # use prices_close[-1] instead of bid,ask
+        rates = trade.get_tick(symbol).decode()
+        bid,ask = rates.split("|")
+        #print(bid, ask)
+        prices_arr = trade.get_data(symbol=symbol, timeframe= str(tf), start_bar=0, end_bar=30, price_type="DATA|")
+        if action == "sell":
+            high_prices = np.array(prices_arr[1], dtype="float")
+            ma_high = talib.WMA(high_prices, timeperiod=5)
+            # if there is no latest data, mt4 may return old data!!!Give 10s to syncing at first time.
+            if first:
+                first = False
+                sleep(10)
+                continue
+            if float(bid) > float(ma_high[-1]):
+                open = True
+                price = bid
+        elif action == "buy":
+            low_prices = np.array(prices_arr[2], dtype="float")
+            ma_low = talib.WMA(low_prices, timeperiod=5)
+            if first:
+                first = False
+                gevent.sleep(10)
+                continue
+            if float(ask) < float(ma_low[-1]):
+                open = True
+                price = ask
+
+        if open:
+            reply = trade.send_order(action, symbol, sl, tp, lots)
+            print(reply)
+            msg = "reply:{}\n{} {} @{} lot:{} TF:M{}".format(reply, action, symbol, price, lots, tf)
+            send_alert(msg)
+            return
+        else:
+            gevent.sleep(1)
+            now = datetime.now().timestamp()
+            if now > end:
+                return
+            continue
+
+def order_job():
+    jobs = []
+    #jobs.append(gevent.spawn(take_order, "sell","EURJPY", 0.5, 60))
+    #jobs.append(gevent.spawn(take_order, "buy","EURJPY", 0.5, 60))
+    #jobs.append(gevent.spawn(take_order, "sell","AUDUSD", 0.5, 15))
+    jobs.append(gevent.spawn(take_order, "buy","AUDUSD", 0.5, 15))
+    #jobs.append(gevent.spawn(take_order, "sell","EURUSD", 0.5, 15))
+    #jobs.append(gevent.spawn(take_order, "buy","EURUSD", 0.5, 15))
+    #jobs.append(gevent.spawn(take_order, "sell","GBPUSD", 0.5, 5))
+    #jobs.append(gevent.spawn(take_order, "buy","GBPUSD", 0.5, 5))
+    #jobs.append(gevent.spawn(take_order, "sell","XAUUSD", 0.5, 5))
+    #jobs.append(gevent.spawn(take_order, "buy","XAUUSD", 0.5, 5))
+    gevent.joinall(jobs)
+
+
+def main(argv):
+    order_job()
+    return
     
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv)
