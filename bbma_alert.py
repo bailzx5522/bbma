@@ -37,6 +37,7 @@ class BBMA():
         WMA_PERIOD = 5
         prices = prices_arr[3]
         prev_close = prices[-2]
+        date = prices[4]
         bbup, bbmid, bblow = talib.BBANDS(prices, 20)
         lma5 = talib.WMA(prices_arr[2], timeperiod=WMA_PERIOD)
         hma5 = talib.WMA(prices_arr[1], timeperiod=WMA_PERIOD)
@@ -45,13 +46,12 @@ class BBMA():
             if hma5[-2] > bbup[-2]:
                 self.ext = {"action":"sell", "ep":"{}-{}".format(prices_arr[1][-2]), "ma_ep": True}
             elif lma5[-2] > bblow[-2]:
-                self.ext = {"action":"buy", "ep":"{}-{}".format(), "ma_ep": True}
+                self.ext = {"action":"buy", "ep":"{}-{}".format(), "ma_ep": True, "date":date[-2]}
         else:
             #check out previous extreme is invalid.New candle close out of bb(faild)
             if (prev_close > self.ext and prev_close > bbup[-2]) or (prev_close < self.ext and  prev_close < bblow[-2]):
                 self.ext = None
                 #self.ext_dt = 
-
         return
 
     def mhv_perform(self):
@@ -178,11 +178,12 @@ params:
     sell while price > hma5 @tf
     buy  while price < lma5 @tf
 """
-def take_order(action, symbol, lots, tf):
+def take_order(action, symbol, lots, tf, close_cond=None):
     sl = 100
     tp = 100
     open = False
     first = True
+    ticket = 0
     timeout = tf * 5
     begin = datetime.now().timestamp()
     end = begin + timeout*60
@@ -218,35 +219,72 @@ def take_order(action, symbol, lots, tf):
                 price = ask
 
         if open:
-            reply = trade.send_order(action, symbol, sl, tp, lots)
+            reply = trade.send_order(action, symbol, sl, tp, lots).decode()
+            ticket = str(reply).split(",")[1]
             print(reply)
             msg = "reply:{}\n{} {} @{} lot:{} TF:M{}".format(reply, action, symbol, price, lots, tf)
             send_alert(msg)
-            return
+            break
         else:
             gevent.sleep(1)
             now = datetime.now().timestamp()
             if now > end:
                 return
             continue
+    if close_cond is None:
+        return
+    if int(ticket) <= 0:
+        print("ticket:",ticket)
+        return
+    
+    close = False
+    while True:
+        rates = trade.get_tick(symbol).decode()
+        bid,ask = rates.split("|")
+        #print(bid, ask)
+        prices_arr = trade.get_data(symbol=symbol, timeframe= str(tf), start_bar=0, end_bar=30, price_type="DATA|")
+        #takeprofit at price < lma5~lma10
+        if action == "sell":
+            low_prices = np.array(prices_arr[2], dtype="float")
+            low_high = talib.WMA(low_prices, timeperiod=5)
+            # if there is no latest data, mt4 may return old data!!!Give 10s to syncing at first time.
+            if float(ask) < float(low_high[-1]):
+                close = True
+                price = ask
+        #takeprofit at price > hma5~hma10
+        elif action == "buy":
+            high_prices = np.array(prices_arr[1], dtype="float")
+            hma = talib.WMA(high_prices, timeperiod=5)
+            if float(bid) > float(hma[-1]):
+                close = True
+                price = bid
+        if close:
+            reply = trade.close_order(ticket)
+            msg = "close ticket:{},reply:{}\n{}} @{} TF:M{}".format(str(ticket), reply, symbol, price, tf)
+            send_alert(msg)
+        else:
+            gevent.sleep(1)
 
 def order_job():
     jobs = []
     #jobs.append(gevent.spawn(take_order, "sell","EURJPY", 0.5, 60))
     #jobs.append(gevent.spawn(take_order, "buy","EURJPY", 0.5, 60))
     #jobs.append(gevent.spawn(take_order, "sell","AUDUSD", 0.5, 15))
-    jobs.append(gevent.spawn(take_order, "buy","AUDUSD", 0.5, 15))
+    #jobs.append(gevent.spawn(take_order, "buy","AUDUSD", 0.5, 15))
     #jobs.append(gevent.spawn(take_order, "sell","EURUSD", 0.5, 15))
     #jobs.append(gevent.spawn(take_order, "buy","EURUSD", 0.5, 15))
     #jobs.append(gevent.spawn(take_order, "sell","GBPUSD", 0.5, 5))
-    #jobs.append(gevent.spawn(take_order, "buy","GBPUSD", 0.5, 5))
+    jobs.append(gevent.spawn(take_order, "buy","GBPUSD", 0.5, 15, True))
     #jobs.append(gevent.spawn(take_order, "sell","XAUUSD", 0.5, 5))
     #jobs.append(gevent.spawn(take_order, "buy","XAUUSD", 0.5, 5))
     gevent.joinall(jobs)
 
 
 def main(argv):
-    order_job()
+    #order_job()
+    #trade.remote_subcribe()
+    while True:
+        trade.remote_sub_recv()
     return
     
 

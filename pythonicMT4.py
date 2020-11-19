@@ -20,15 +20,20 @@ class zmq_python():
         self.pullSocket.connect("tcp://localhost:5556")
 
         #create subcribe Socket
-        self.subSocket = self.context.socket(zmq.XSUB)
+        self.subSocket = self.context.socket(zmq.SUB)
         self.subSocket.connect("tcp://127.0.0.1:6666")
 
-    def remote_subcribe(self):
+    def remote_sub_recv(self):
         try:
-            ret = self.subSocket.recv(flags=zmq.NOBLOCK)
+            self.subSocket.subscribe("")
+            #ret = self.subSocket.recv(flags=zmq.NOBLOCK)
+            ret = self.subSocket.recv()
             print(ret)
         except Exception as e:
             print("Exception:", e)
+
+    def remote_subcribe(self, topic=""):
+        self.subSocket.subscribe(topic)
     
     def remote_send(self, socket, data):
     
@@ -92,8 +97,6 @@ class zmq_python():
         self.remote_send(self.reqSocket, self.data)
         return self.remote_pull(self.pullSocket)
 
-    def subcribe(self):
-        self.remote_subcribe(self.subSocket)
     
     def send_order(self, action, symbol, stop_loss, take_profit, lots=0.01):
         if action == "buy":
@@ -124,5 +127,11 @@ class zmq_python():
     def close_sell_order(self):
         self.close_sell= "TRADE|CLOSE|1"
         self.remote_send(self.reqSocket, self.close_sell)
+        reply= self.remote_pull(self.pullSocket)
+        return reply
+
+    def close_order(self, ticket):
+        self.close= "TRADE|CLOSE|" + str(ticket)
+        self.remote_send(self.reqSocket, self.close)
         reply= self.remote_pull(self.pullSocket)
         return reply
