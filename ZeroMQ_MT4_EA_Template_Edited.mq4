@@ -107,11 +107,11 @@ void OnTimer()
       2) MessageHandler() to process the request
       3) socket.send(reply)
    */
-   
-   // public/subcribe model
-   // push tick data
-   //pushTickData();
-   
+
+// public/subcribe model
+// push tick data
+pushTickData();
+
 // Get client's response, but don't wait.
    repSocket.recv(request,true);
 // MessageHandler() should go here.
@@ -122,14 +122,18 @@ void OnTimer()
   }
 //+------------------------------------------------------------------+
 
-void pushTickData(){
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+void pushTickData()
+  {
    string ret = "N/A";
    ret = GetBidAsk("EURUSD");
-   ZmqMsg pubReply(StringFormat("%s", ret));
+   ZmqMsg pubReply(StringFormat("%s,"+TimeCurrent(), ret));
    pubSocket.send(pubReply);
-   //InformPullClient(pubSocket, ret);
+//InformPullClient(pubSocket, ret);
    Print(ret);
-}
+  }
 
 //+------------------------------------------------------------------+
 //|                                                                  |
@@ -228,7 +232,7 @@ void InterpretZmqMessage(Socket &pSocket, string& compArray[])
       switch_action = 3;
    if(compArray[0] == "DATA")
       switch_action = 4;
-   if(compArray[0] == "DATA1") //high
+   if(compArray[0] == "ORDERS") //high
       switch_action = 5;
    if(compArray[0] == "DATA2")  //low
       switch_action = 6;
@@ -239,6 +243,8 @@ void InterpretZmqMessage(Socket &pSocket, string& compArray[])
    bool ans = FALSE;
    double price_array[];
    ArraySetAsSeries(price_array, true);
+   MqlRates rates[];
+   ArraySetAsSeries(rates,true);
 
    int price_count = 0;
 
@@ -248,18 +254,18 @@ void InterpretZmqMessage(Socket &pSocket, string& compArray[])
          //InformPullClient(pSocket, "OPEN TRADE Instruction Received");
          if(compArray[2] == "0")
            {
-           // use symbol from params, do not use symbol attached
+            // use symbol from params, do not use symbol attached
             double ask = MarketInfo(compArray[3], MODE_ASK);
             StopLossLevel = ask - StrToDouble(compArray[4]) * Point;
             TakeProfitLevel = ask + StrToDouble(compArray[5]) * Point;
-            //InformPullClient(pSocket, "Buy Order");            
+            //InformPullClient(pSocket, "Buy Order");
             Ticket= OrderSend(compArray[3], OP_BUY, MaximumLotSize, ask, Slippage, StopLossLevel,TakeProfitLevel, "Buy(#" + MagicNumber + ")", MagicNumber, 0, DodgerBlue);
             if(Ticket > 0)
               {
                if(OrderSelect(Ticket, SELECT_BY_TICKET, MODE_TRADES))
                  {
                   Print("BUY order opened : ", OrderOpenPrice());
-                  InformPullClient(pSocket, "OrderSend placed successfully");
+                  InformPullClient(pSocket, "OrderSend placed successfully," + Ticket);
                  }
               }
             else
@@ -271,8 +277,8 @@ void InterpretZmqMessage(Socket &pSocket, string& compArray[])
            }
          if(compArray[2] == "1")
            {
-           // use symbol from params, do not use symbol attached
-           double bid = MarketInfo(compArray[3], MODE_BID);
+            // use symbol from params, do not use symbol attached
+            double bid = MarketInfo(compArray[3], MODE_BID);
             StopLossLevel = bid + StrToDouble(compArray[4]) * Point;
             TakeProfitLevel = bid - StrToDouble(compArray[5]) * Point;
             //InformPullClient(pSocket, "Sell Order");
@@ -282,7 +288,7 @@ void InterpretZmqMessage(Socket &pSocket, string& compArray[])
                if(OrderSelect(Ticket, SELECT_BY_TICKET, MODE_TRADES))
                  {
                   Print("SELL order opened : ", OrderOpenPrice());
-                  InformPullClient(pSocket, "OrderSend placed successfully");
+                  InformPullClient(pSocket, "OrderSend placed successfully,"+ Ticket);
                  }
               }
             else
@@ -315,94 +321,35 @@ void InterpretZmqMessage(Socket &pSocket, string& compArray[])
             Ticket2 = OrderClose(OrderTicket(), OrderLots(), Ask, Slippage, DarkOrange);
            }
          break;
-
       case 4:
-         price_count = CopyClose(compArray[1], StrToInteger(compArray[2]),
+         price_count = CopyRates(compArray[1], StrToInteger(compArray[2]),
                                  StrToInteger(compArray[3]), StrToInteger(compArray[4]),
-                                 price_array);
+                                 rates);
          if(price_count > 0)
            {
-            ret = "";
-
-            // Construct string of price|price|price|.. etc and send to PULL client.
-            for(int i = 0; i < price_count; i++)
+            for(int i=0; i< price_count; i++)
               {
-
+               //Print("close:",double(rates[i].close));
+               //Print("high:",double(rates[i].high));
+               //Print("time:",TimeToString(rates[i].time));
                if(i == 0)
-                  ret = compArray[1] + "|" + DoubleToStr(price_array[i], 5);
+                  ret = compArray[1] + "|" + DoubleToStr(rates[i].open, 5) + "," +DoubleToStr(rates[i].high, 5)
+                        + "," +DoubleToStr(rates[i].low, 5)+ "," +DoubleToStr(rates[i].close, 5)
+                        + "," +TimeToString(rates[i].time);
                else
                   if(i > 0)
                     {
-                     ret = ret + "|" + DoubleToStr(price_array[i], 5);
+                     ret = ret + "|" + DoubleToStr(rates[i].open, 5) + "," +DoubleToStr(rates[i].high, 5)
+                           + "," +DoubleToStr(rates[i].low, 5)+ "," +DoubleToStr(rates[i].close, 5)
+                           + "," +TimeToString(rates[i].time);
                     }
               }
-
             Print("Sending: " + ret);
-
             // Send data to PULL client.
             InformPullClient(pSocket, StringFormat("%s", ret));
-            // ret = "";
            }
          break;
-      case 5:
-         price_count = CopyHigh(compArray[1], StrToInteger(compArray[2]),
-                                StrToInteger(compArray[3]), StrToInteger(compArray[4]),
-                                price_array);
-         if(price_count > 0)
-           {
-            ret = "";
 
-            // Construct string of price|price|price|.. etc and send to PULL client.
-            for(int i = 0; i < price_count; i++)
-              {
-
-               if(i == 0)
-                  ret = compArray[1] + "|" + DoubleToStr(price_array[i], 5);
-               else
-                  if(i > 0)
-                    {
-                     ret = ret + "|" + DoubleToStr(price_array[i], 5);
-                    }
-              }
-
-            Print("Sending: " + ret);
-
-            // Send data to PULL client.
-            InformPullClient(pSocket, StringFormat("%s", ret));
-            // ret = "";
-           }
-         break;
-      case 6:
-         //InformPullClient(pSocket, "HISTORICAL DATA Instruction Received");
-
-         // Format: DATA|SYMBOL|TIMEFRAME|START_DATETIME|END_DATETIME
-         price_count = CopyLow(compArray[1], StrToInteger(compArray[2]),
-                               StrToInteger(compArray[3]), StrToInteger(compArray[4]),
-                               price_array);
-         if(price_count > 0)
-           {
-            ret = "";
-
-            // Construct string of price|price|price|.. etc and send to PULL client.
-            for(int i = 0; i < price_count; i++)
-              {
-
-               if(i == 0)
-                  ret = compArray[1] + "|" + DoubleToStr(price_array[i], 5);
-               else
-                  if(i > 0)
-                    {
-                     ret = ret + "|" + DoubleToStr(price_array[i], 5);
-                    }
-              }
-
-            Print("Sending: " + ret);
-
-            // Send data to PULL client.
-            InformPullClient(pSocket, StringFormat("%s", ret));
-            // ret = "";
-           }
-         break;
       default:
          break;
      }
@@ -443,8 +390,8 @@ void InformPullClient(Socket& pushSocket, string message)
    ZmqMsg pushReply(StringFormat("%s", message));
 // pushSocket.send(pushReply,true,false);
 
-   pushSocket.send(pushReply,true); // NON-BLOCKING
-// pushSocket.send(pushReply,false); // BLOCKING
+//   pushSocket.send(pushReply,true); // NON-BLOCKING
+   pushSocket.send(pushReply,false); // BLOCKING
 
   }
 //+------------------------------------------------------------------+
