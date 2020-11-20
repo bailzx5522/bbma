@@ -23,18 +23,16 @@ class zmq_python():
         self.subSocket = self.context.socket(zmq.SUB)
         self.subSocket.connect("tcp://127.0.0.1:6666")
 
-    def remote_sub_recv(self):
+    def remote_sub_recv(self, topic=""):
         try:
-            self.subSocket.subscribe("")
-            #ret = self.subSocket.recv(flags=zmq.NOBLOCK)
-            ret = self.subSocket.recv()
-            print(ret)
+            self.subSocket.subscribe(topic)
+            top = self.subSocket.recv().decode()
+            res = self.subSocket.recv().decode()
+            #print("top:",top, "res:", res)
+            return top,res
         except Exception as e:
             print("Exception:", e)
 
-    def remote_subcribe(self, topic=""):
-        self.subSocket.subscribe(topic)
-    
     def remote_send(self, socket, data):
     
         try:

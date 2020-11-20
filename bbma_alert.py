@@ -2,8 +2,11 @@ import pythonicMT4
 import talib
 import numpy as np
 import gevent
+from gevent import monkey
+monkey.patch_all()
 import requests
 import sys
+import pandas as pd
 from datetime import datetime
 from time import sleep
 
@@ -142,10 +145,7 @@ def bbma(symbol, tf):
 
 def feed():
     while True:
-        symbols = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "XAUUSD"]
-        for s in symbols:
-            rates = trade.get_tick(s)
-            #print(rates)
+        print("-------------------------------",datetime.now())
         gevent.sleep(1)
 
 # telegram
@@ -280,11 +280,47 @@ def order_job():
     gevent.joinall(jobs)
 
 
+def sub():
+    temp = {}
+    eu_rates = pd.DataFrame(columns=["date", "bid", "ask"])
+    gu_rates = pd.DataFrame(columns=["date", "bid", "ask"])
+    au_rates = pd.DataFrame(columns=["date", "bid", "ask"])
+    uj_rates = pd.DataFrame(columns=["date", "bid", "ask"])
+    xau_rates = pd.DataFrame(columns=["date", "bid", "ask"])
+    while True:
+        sym,rate = trade.remote_sub_recv()
+        #print(sym,rate)
+        if rate == temp.get(sym):
+            continue
+        else:
+            temp[sym] = rate
+            bid,ask = rate.split("|")
+            if sym == "EURUSD":
+                eu_rate = pd.DataFrame([[datetime.now().strftime("%Y-%m-%d %H:%M:%S"),bid, ask]], columns=["date", "bid", "ask"])
+                eu_rates = eu_rates.append(eu_rate)
+                print(eu_rates.tail(1))
+            elif sym == "GBPUSD":
+                gu_rate = pd.DataFrame([[datetime.now().strftime("%Y-%m-%d %H:%M:%S"),bid, ask]], columns=["date", "bid", "ask"])
+                gu_rates = gu_rates.append(gu_rate)
+            elif sym == "AUDUSD":
+                au_rate = pd.DataFrame([[datetime.now().strftime("%Y-%m-%d %H:%M:%S"),bid, ask]], columns=["date", "bid", "ask"])
+                au_rates = au_rates.append(au_rate)
+            elif sym == "USDJPY":
+                uj_rate = pd.DataFrame([[datetime.now().strftime("%Y-%m-%d %H:%M:%S"),bid, ask]], columns=["date", "bid", "ask"])
+                uj_rates = uj_rates.append(uj_rate)
+            elif sym == "XAUUSD":
+                xau_rate = pd.DataFrame([[datetime.now().strftime("%Y-%m-%d %H:%M:%S"),bid, ask]], columns=["date", "bid", "ask"])
+                xau_rates = xau_rates.append(xau_rate)
+                print(xau_rates.tail(1))
+        gevent.sleep(0)
+
 def main(argv):
     #order_job()
     #trade.remote_subcribe()
-    while True:
-        trade.remote_sub_recv()
+    jobs = []
+    jobs.append(gevent.spawn(sub))
+    jobs.append(gevent.spawn(feed))
+    gevent.joinall(jobs)
     return
     
 
