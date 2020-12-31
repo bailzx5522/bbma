@@ -5,6 +5,7 @@ Created on Mon Apr 30 20:15:31 2018
 """
 import zmq
 import numpy as np
+import pandas as pd
 class zmq_python():
     
     def __init__(self):
@@ -84,6 +85,7 @@ class zmq_python():
         close.reverse()
         time.reverse()
         price_arr = np.array([open, high, low, close, time])
+        price_arr = pd.DataFrame([open,high,low, close, time], columns=["o", "h", "l", "c", "d"]) # ohlc,date
         #print(price_arr)
         #price_lst= [s.split(",") for s in price_lst]
         #price_lst= price_lst[::-1]

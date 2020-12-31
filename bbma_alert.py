@@ -3,24 +3,75 @@ import talib
 import numpy as np
 import gevent
 from gevent import monkey
-monkey.patch_all()
+#monkey.patch_all()
 import requests
 import sys
 import pandas as pd
 from datetime import datetime
 from time import sleep
 
+from engine import BaseEngine
+from eventEngine import EventEngine, Event
+from mainEngine import MainEngine
+from gateway import Mt4Gateway
+
+# settings
+symbols = ["EURUSD"]
+tfs = ["15M"]
+# Global Data
 trade= pythonicMT4.zmq_python()
+eu_rates = pd.DataFrame(columns=["date", "bid", "ask"])
+gu_rates = pd.DataFrame(columns=["date", "bid", "ask"])
+au_rates = pd.DataFrame(columns=["date", "bid", "ask"])
+uj_rates = pd.DataFrame(columns=["date", "bid", "ask"])
+xau_rates = pd.DataFrame(columns=["date", "bid", "ask"])
+ 
+
 def send_screenshot():
     pass
 
+
 class BBMA():
-    def __init__(self, tf):
-        self.tf = tf
+    def __init__(self, sym):
+        # parameters/data
+        self.sym = sym
+        self.prices = None
+
+        # trading conditions
         self.ext = None  #{"action":"buy","ep": "", "ma_ep":bool, }
         self.mhv = None
         #self.reentry = None
-    
+
+        #initialize
+        self.init_data()
+
+    def init_data(self):
+        self.prices5M = trade.get_data(symbol=self.sym, timeframe= "5M", start_bar=0, end_bar=50, price_type="DATA|")
+        self.prices15M = trade.get_data(symbol=self.sym, timeframe= "15M", start_bar=0, end_bar=50, price_type="DATA|")
+        self.prices60M = trade.get_data(symbol=self.sym, timeframe= "60M", start_bar=0, end_bar=50, price_type="DATA|")
+        #high_prices = np.array(prices_arr[1], dtype="float")
+        #hma5 = talib.WMA(high_prices, timeperiod=5)
+        #hma10 = talib.WMA(high_prices, timeperiod=10)
+        #low_prices = np.array(prices_arr[2], dtype="float")
+        #lma10 = talib.WMA(low_prices, timeperiod=10)
+
+    def tick2bar(self):
+        # only use bid
+        # from tick, we got [o,h,l,c] of 5mins
+        self.prices5M = eu_rates["bid"].resample("5Min").ohlc()
+        self.prices15M = eu_rates["bid"].resample("15Min").ohlc()
+        self.prices60M = eu_rates["bid"].resample("60Min").ohlc()
+        #au5M = au_rates["bid"].resample("5Min").ohlc()
+        #gu5M = au_rates["bid"].resample("5Min").ohlc()
+        #xau5M = au_rates["bid"].resample("5Min").ohlc()
+        #uj5M = au_rates["bid"].resample("5Min").ohlc()
+        self.eu_rate = eu_rates[["bid", "ask"]].tail(1)
+        self.au_rate = au_rates[["bid", "ask"]].tail(1)
+        self.gu_rate = gu_rates[["bid", "ask"]].tail(1)
+        self.uj_rate = uj_rates[["bid", "ask"]].tail(1)
+
+        #TODO merge new bars to prices_arr
+ 
     """
     EXTREME:
         uptrend:
@@ -36,9 +87,9 @@ class BBMA():
             until candle close out of bbup
         input: array of prices(open high low close)
     """
-    def extreme(self, prices_arr):
+    def extreme(self):
         WMA_PERIOD = 5
-        prices = prices_arr[3]
+        prices = self.prices["close"]
         prev_close = prices[-2]
         date = prices[4]
         bbup, bbmid, bblow = talib.BBANDS(prices, 20)
@@ -82,13 +133,15 @@ class BBMA():
     def pattern(self):
         pass
 
-    def format_data(self, prices_arr):
-        o = prices_arr[0]
-        h = prices_arr[1]
-        l = prices_arr[2]
-        c = prices_arr[3]
-        d = prices_arr[4]
-        return np.array([o, h, l, c, d])
+    def run(self):
+        new_bar = False
+        bbma = BBMA(tf, sym)
+        while True:
+            if new_bar:
+                self.tick2bar()
+            self.extreme()
+
+            gevent.sleep(1)
 
 def bbma(symbol, tf):
     start= 0
@@ -163,15 +216,6 @@ def send_alert(message):
         return
     else:
         print(response.json())
-
-def bbma_get_data():
-    jobs = [gevent.spawn(feed)]
-    symbols = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "XAUUSD"]
-    tfs = [5, 15, 30, 60]
-    for s in symbols:
-        for tf in tfs:
-            jobs.append(gevent.spawn(bbma, s, tf))
-    gevent.joinall(jobs)
 
 """
 params:
@@ -282,11 +326,6 @@ def order_job():
 
 def sub():
     temp = {}
-    eu_rates = pd.DataFrame(columns=["date", "bid", "ask"])
-    gu_rates = pd.DataFrame(columns=["date", "bid", "ask"])
-    au_rates = pd.DataFrame(columns=["date", "bid", "ask"])
-    uj_rates = pd.DataFrame(columns=["date", "bid", "ask"])
-    xau_rates = pd.DataFrame(columns=["date", "bid", "ask"])
     while True:
         sym,rate = trade.remote_sub_recv()
         #print(sym,rate)
@@ -314,15 +353,32 @@ def sub():
                 print(xau_rates.tail(1))
         gevent.sleep(0)
 
+def p(e: Event):
+    while True:
+        sleep(3)
+        print(e.data)
+
+class TestEngine(BaseEngine):
+    def __init__(self):
+        self.engine_name = "TestEngine"
+        pass
+
 def main(argv):
     #order_job()
     #trade.remote_subcribe()
-    jobs = []
-    jobs.append(gevent.spawn(sub))
-    jobs.append(gevent.spawn(feed))
-    gevent.joinall(jobs)
-    return
-    
+    #jobs = []
+    #jobs.append(gevent.spawn(sub))
+    #jobs.append(gevent.spawn(feed))
+    #gevent.joinall(jobs)
+    #return
 
+    ee = EventEngine()
+    me = MainEngine(ee)
+    me.add_gateway()
+    #ta = me.add_engine(TestEngine)
+    ee.register("test", p)
+    ee.put(Event("test", "event data"))
+    print(123333)
+    
 if __name__ == "__main__":
     main(sys.argv)
