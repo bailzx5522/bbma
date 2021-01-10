@@ -10,11 +10,6 @@ import pandas as pd
 from datetime import datetime
 from time import sleep
 
-from engine import BaseEngine
-from eventEngine import EventEngine, Event
-from mainEngine import MainEngine
-from gateway import Mt4Gateway
-
 # settings
 symbols = ["EURUSD"]
 tfs = ["15M"]
@@ -353,15 +348,6 @@ def sub():
                 print(xau_rates.tail(1))
         gevent.sleep(0)
 
-def p(e: Event):
-    while True:
-        sleep(3)
-        print(e.data)
-
-class TestEngine(BaseEngine):
-    def __init__(self):
-        self.engine_name = "TestEngine"
-        pass
 
 def main(argv):
     #order_job()
@@ -370,15 +356,7 @@ def main(argv):
     #jobs.append(gevent.spawn(sub))
     #jobs.append(gevent.spawn(feed))
     #gevent.joinall(jobs)
-    #return
-
-    ee = EventEngine()
-    me = MainEngine(ee)
-    me.add_gateway()
-    #ta = me.add_engine(TestEngine)
-    ee.register("test", p)
-    ee.put(Event("test", "event data"))
-    print(123333)
+    return
     
 if __name__ == "__main__":
     main(sys.argv)
