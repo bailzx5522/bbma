@@ -3,6 +3,9 @@ from collections import defaultdict
 from threading import Thread
 from queue import Queue,Empty
 
+
+EVENT_TICK = "tick"
+
 class Event:
     """
     Event object consists of a type string which is used

@@ -349,7 +349,31 @@ def sub():
         gevent.sleep(0)
 
 
+def plotme():
+    import matplotlib.pyplot as plt
+    f = open("C:\\Users\\dom\\Desktop\\output")
+    data = f.readlines()
+    result = {}
+    for d in data:
+        line = d.split(" ")
+        ledger = line[0].strip()
+        xrp = int(line[1].strip())
+        result[ledger] = xrp
+    result2 = sorted(result.items(), key=lambda obj: obj[0])
+    v = []
+    prev = 0
+    for r in result2:
+        v.append(r[1])
+        if prev > 0 and prev - r[1] > 10000000:
+            print(r[0], r[1])
+        prev = r[1]
+
+    plt.plot(v)
+    plt.show(block=True)
+
 def main(argv):
+    plotme()
+    return
     #order_job()
     #trade.remote_subcribe()
     #jobs = []
