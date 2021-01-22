@@ -4,10 +4,27 @@ from time import sleep
 from eventEngine import Event
 from eventEngine import EVENT_TICK
 from datetime import datetime
+from dataclasses import dataclass
 
 setting = {"req_address":"tcp://127.0.0.1:5555",
            "sub_address":"tcp://127.0.0.1:6666"}
 
+@dataclass
+class BarData:
+    symbol : str
+    interval : int = 0
+    datetime : datetime = None
+    open : float = None
+    high : float = None
+    low : float = None
+    close : float = None
+
+@dataclass
+class TickData:
+    symbol : str = ""
+    bid : float = 0
+    ask : float = 0
+    datetime : datetime = None
 
 class BaseGateway():
     def __init__(self):
@@ -31,14 +48,13 @@ class Mt4Gateway(BaseGateway):
         if "data" not in packet:
             return
         for d in packet["data"]:
-            tick = {"symbol": d["symbol"],
-                    "bid":d["bid"],
-                    "ask":d["ask"],
-                    "datetime":datetime.now()
-                    }
+            tick = TickData(symbol=d["symbol"],
+                bid=d["bid"],
+                ask=d["ask"],
+                datetime=datetime.now())
             self.on_event(EVENT_TICK, tick)
 
-    def on_event(self, e_type:str, e_data):
+    def on_event(self, e_type:str, e_data : TickData):
         event = Event(e_type, e_data)
         self.event_engine.put(event)
 
